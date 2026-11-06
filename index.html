@@ -249,7 +249,7 @@ tr.window td{background:var(--gold-soft);color:var(--text);font-family:var(--fon
   .bench{left:14px;transform:none;max-width:calc(100% - 120px);justify-content:flex-start}
 }
 @media (max-width:560px){
-  .share textarea{min-height:250px}
+  .share textarea{min-height:460px}
   .diffs,.cols{grid-template-columns:1fr}
   .endgrid{grid-template-columns:repeat(2,1fr)}
 }
@@ -277,7 +277,7 @@ tr.window td{background:var(--gold-soft);color:var(--text);font-family:var(--fon
     <div class="view" id="marketView" hidden>
       <div class="view-head">
         <h2 id="marketTitle">Summer transfer window</h2>
-        <p class="muted">Sign 15 players: 2 GK, 5 DEF, 5 MID, 3 FWD. Max 3 from any one club. Your best 11 start.</p>
+        <p class="muted">Sign 15 players: 2 GK, 5 DEF, 5 MID, 3 FWD. Your best 11 start.</p>
         <label class="mform" for="mFormation">Formation <select id="mFormation"></select></label>
         <p class="window-note" id="windowNote" hidden></p>
       </div>
@@ -430,6 +430,7 @@ Tyler Adams|MID|BOU|USA|78
 Alex Scott|MID|BOU|ENG|78
 Marcus Tavernier|MID|BOU|ENG|78
 Lewis Cook|MID|BOU|ENG|76
+Ryan Christie|MID|BOU|SCO|75
 Justin Kluivert|FWD|BOU|NED|79
 Evanilson|FWD|BOU|BRA|79
 Amine Adli|FWD|BOU|MAR|77
@@ -862,7 +863,6 @@ const DIFFICULTY = {
 };
 const LIMITS = {GK:2, DEF:5, MID:5, FWD:3};
 const SQUAD_SIZE = 15;
-const MAX_PER_CLUB = 3;
 const POS_ORDER = ['GK','DEF','MID','FWD'];
 const POS_NAME = {GK:'goalkeeper', DEF:'defence', MID:'midfield', FWD:'attack'};
 const FORMATIONS = {
@@ -895,7 +895,6 @@ const squadPlayers = () => S.squad.map(P);
 const spent = () => squadPlayers().reduce((s, p) => s + p.price, 0);
 const left = () => S.budget - spent();
 const countPos = pos => squadPlayers().filter(p => p.pos === pos).length;
-const countClub = club => squadPlayers().filter(p => p.club === club).length;
 const money = v => `£${Number.isInteger(v) ? v : v.toFixed(1)}m`;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 const ordinal = n => n + (['th','st','nd','rd'][(n % 100 - 20) % 10] || ['th','st','nd','rd'][n % 100] || 'th');
@@ -914,7 +913,6 @@ function abbr(name){
 function canAdd(p){
   if (S.squad.includes(p.id)) return {ok:false};
   if (countPos(p.pos) >= LIMITS[p.pos]) return {ok:false, why:`${p.pos} slots full`};
-  if (countClub(p.club) >= MAX_PER_CLUB) return {ok:false, why:`Already 3 from ${p.club}`};
   if (p.price > left() + 1e-9) return {ok:false, why:'Not enough budget'};
   return {ok:true};
 }
@@ -1187,7 +1185,7 @@ function squadAdvice(){
   const worst = (weak[1] === 'DEF' ? xi.DEF.concat(xi.GK) : xi[weak[1]]).slice().sort((a, b) => a.rating - b.rating)[0];
   if (worst){
     const ups = PLAYERS.filter(p => p.pos === worst.pos && !S.squad.includes(p.id) && p.rating > worst.rating &&
-        p.price <= left() + worst.price && (p.club === worst.club || countClub(p.club) < MAX_PER_CLUB))
+        p.price <= left() + worst.price)
       .sort((a, b) => b.rating - a.rating || a.price - b.price).slice(0, 2);
     tips.push(['Upgrade', ups.length
       ? `<b>${esc(worst.short)}</b> (${worst.rating}) is your weakest starter there. ${canTrade ? 'Sell them and you can afford' : `Selling them${when} would let you afford`} ${ups.map(p => `<b>${esc(p.name)}</b> (${p.rating}, ${money(p.price)})`).join(' or ')}.`
@@ -1956,6 +1954,7 @@ function shareText(){
   const icon = pos === 1 ? '🏆' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos >= 18 ? '🔻' : '⚽';
   const grid = S.myGames.map(m => m.gf > m.ga ? '🟩' : m.gf === m.ga ? '🟨' : '🟥');
   const top = Object.entries(S.pstats).map(([id, s]) => ({p:P(+id), g:s.g})).sort((a, b) => b.g - a.g)[0];
+  const {xi} = pickXI();
   return [
     `Football Gaffer 2026/27 (${DIFFICULTY[S.difficulty].label})`,
     `${icon} ${S.teamName} finished ${ordinal(pos)}`,
@@ -1963,6 +1962,10 @@ function shareText(){
     grid.slice(0, JANUARY_AFTER).join(''),
     grid.slice(JANUARY_AFTER).join(''),
     ...(top && top.g ? [`Top scorer: ${top.p.short} (${top.g})`] : []),
+    '',
+    `My XI (${S.formation})`,
+    ...POS_ORDER.map(pos => `${pos}: ${xi[pos].map(p => p.short).join(', ')}`),
+    '',
     'Do you have what it takes to win the league?',
     ...(SHARE_URL ? [SHARE_URL] : []),
   ].join('\n');
@@ -2005,7 +2008,7 @@ function endSeason(){
       <div><b>${t.GF}</b><span>Scored</span></div><div><b>${t.GA}</b><span>Conceded</span></div></div>
     <div class="share">
       <h3>Share your result</h3>
-      <textarea id="shareBox" rows="8" readonly aria-label="Your result to share"></textarea>
+      <textarea id="shareBox" rows="15" readonly aria-label="Your result to share"></textarea>
       <div class="share-btns">
         <button class="btn primary" id="copyBtn">Copy result</button>
         <a class="btn" id="messengerBtn" href="https://www.messenger.com/" target="_blank" rel="noopener">Copy and open Messenger</a>
