@@ -227,6 +227,13 @@ tr.window td{background:var(--gold-soft);color:var(--text);font-family:var(--fon
 .final-table th:first-child,.final-table td:first-child{padding-left:12px}
 .final-table th:last-child,.final-table td:last-child{padding-right:12px}
 .final-table .legend{padding:8px 12px}
+.share{margin-top:16px;padding:14px;border:1px solid var(--border);border-radius:10px;background:var(--panel-2)}
+.share h3{margin:0 0 8px;color:var(--gold)}
+.share textarea{display:block;width:100%;resize:none;border:1px solid var(--border);border-radius:7px;padding:10px;background:var(--panel);font-size:14px;line-height:1.4}
+.share-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.share-btns .btn{flex:1 1 150px;text-align:center;text-decoration:none;color:var(--text)}
+.card .share-btns .btn.primary{width:auto;margin:0;padding:9px 14px;font-size:16px;color:var(--accent-ink)}
+.share-status{min-height:20px;margin:8px 0 0;font-size:13.5px;color:var(--muted)}
 .endrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}
 .endrow .btn{flex:1}
 .endrow .btn.primary{width:auto;margin:0}
@@ -242,6 +249,7 @@ tr.window td{background:var(--gold-soft);color:var(--text);font-family:var(--fon
   .bench{left:14px;transform:none;max-width:calc(100% - 120px);justify-content:flex-start}
 }
 @media (max-width:560px){
+  .share textarea{min-height:250px}
   .diffs,.cols{grid-template-columns:1fr}
   .endgrid{grid-template-columns:repeat(2,1fr)}
 }
@@ -1941,6 +1949,46 @@ function records(){
     ['Home record', rec(g.filter(m => m.home))], ['Away record', rec(g.filter(m => !m.home))],
     ['Clean sheets', g.filter(m => m.ga === 0).length]];
 }
+// The link is only added on the public site, not in local or preview copies.
+const SHARE_URL = /\.github\.io$|\.netlify\.app$/.test(location.hostname) ? location.origin + location.pathname : '';
+function shareText(){
+  const pos = myPosition(), t = S.table[0];
+  const icon = pos === 1 ? '🏆' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos >= 18 ? '🔻' : '⚽';
+  const grid = S.myGames.map(m => m.gf > m.ga ? '🟩' : m.gf === m.ga ? '🟨' : '🟥');
+  const top = Object.entries(S.pstats).map(([id, s]) => ({p:P(+id), g:s.g})).sort((a, b) => b.g - a.g)[0];
+  return [
+    `Football Gaffer 2026/27 (${DIFFICULTY[S.difficulty].label})`,
+    `${icon} ${S.teamName} finished ${ordinal(pos)}`,
+    `${t.Pts} pts · ${t.W}W ${t.D}D ${t.L}L · GD ${t.GF - t.GA > 0 ? '+' : ''}${t.GF - t.GA}`,
+    grid.slice(0, JANUARY_AFTER).join(''),
+    grid.slice(JANUARY_AFTER).join(''),
+    ...(top && top.g ? [`Top scorer: ${top.p.short} (${top.g})`] : []),
+    'Do you have what it takes to win the league?',
+    ...(SHARE_URL ? [SHARE_URL] : []),
+  ].join('\n');
+}
+function setShareStatus(msg){ $('shareStatus').textContent = msg; }
+async function copyResult(){
+  const box = $('shareBox');
+  try { await navigator.clipboard.writeText(box.value); return true; }
+  catch {
+    box.focus(); box.select();
+    try { return document.execCommand('copy'); } catch { return false; }
+  }
+}
+function wireShare(){
+  const failed = 'Copying was blocked. Select the text above and copy it yourself.';
+  $('copyBtn').onclick = async () => setShareStatus(await copyResult() ? 'Copied. Paste it into any chat.' : failed);
+  $('messengerBtn').onclick = async () => setShareStatus(await copyResult() ? 'Copied. Paste it into your Messenger chat.' : failed);
+  // Phones get the system share sheet, which lists Messenger if it's installed.
+  if (navigator.share && matchMedia('(pointer: coarse)').matches){
+    $('nativeShareBtn').hidden = false;
+    $('nativeShareBtn').onclick = async () => {
+      try { await navigator.share({text:$('shareBox').value}); }
+      catch (e){ if (e.name !== 'AbortError') setShareStatus(await copyResult() ? 'Sharing was blocked, so the result was copied instead.' : failed); }
+    };
+  }
+}
 function endSeason(){
   S.phase = 'end';
   const rows = sortedTable(), pos = myPosition(), t = S.table[0];
@@ -1955,6 +2003,16 @@ function endSeason(){
     <p class="lede">${sub}</p>
     <div class="endgrid"><div><b>${t.Pts}</b><span>Points</span></div><div><b>${t.W}-${t.D}-${t.L}</b><span>W-D-L</span></div>
       <div><b>${t.GF}</b><span>Scored</span></div><div><b>${t.GA}</b><span>Conceded</span></div></div>
+    <div class="share">
+      <h3>Share your result</h3>
+      <textarea id="shareBox" rows="8" readonly aria-label="Your result to share"></textarea>
+      <div class="share-btns">
+        <button class="btn primary" id="copyBtn">Copy result</button>
+        <a class="btn" id="messengerBtn" href="https://www.messenger.com/" target="_blank" rel="noopener">Copy and open Messenger</a>
+        <button class="btn" id="nativeShareBtn" hidden>Share</button>
+      </div>
+      <p class="share-status" id="shareStatus" role="status"></p>
+    </div>
     <h3>${pos === 1 ? 'How you won it' : "Why you didn't win the league"}</h3>
     <ul class="why">${reasons.map(r => `<li>${r}</li>`).join('')}</ul>
     <h3>Final table</h3>
@@ -1969,6 +2027,8 @@ function endSeason(){
     <h3>Season records</h3>
     <div class="records">${records().map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join('')}</div>
     <div class="endrow"><button class="btn" id="rebuildBtn">New squad</button><button class="btn primary" id="againBtn">Play again, same squad</button></div>`;
+  $('shareBox').value = shareText();
+  wireShare();
   $('endModal').hidden = false;
   $('endCard').scrollTop = 0;
   $('againBtn').onclick = () => { $('endModal').hidden = true; setupSeason(); S.phase = 'season'; buildLineup(); renderHub(); };
